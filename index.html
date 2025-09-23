@@ -102,7 +102,9 @@
       #followCursorLabel {
         cursor: pointer;
       }
-      #difficultyMenu {
+      #difficultyMenu,
+      #gameOverMenu,
+      #gameWonMenu {
         position: absolute;
         top: 50%;
         left: 50%;
@@ -114,7 +116,16 @@
         text-align: center;
         z-index: 20;
       }
-      #difficultyMenu button {
+      #difficultyMenu {
+        display: block; /* Show by default at game start */
+      }
+      #gameOverMenu,
+      #gameWonMenu {
+        display: none; /* Hidden until game over/win */
+      }
+      #difficultyMenu button,
+      #gameOverMenu button,
+      #gameWonMenu button {
         display: block;
         margin: 10px auto;
         padding: 10px 20px;
@@ -124,7 +135,9 @@
         cursor: pointer;
         font-size: 18px;
       }
-      #difficultyMenu button:hover {
+      #difficultyMenu button:hover,
+      #gameOverMenu button:hover,
+      #gameWonMenu button:hover {
         background: #45a049;
       }
       #customForm {
@@ -177,6 +190,16 @@
         ><br />
         <button onclick="startCustomGame()">Начать игру</button>
       </div>
+    </div>
+    <div id="gameOverMenu">
+      <h2>Игра окончена</h2>
+      <p id="gameOverScore">Финальный счёт: 0</p>
+      <button onclick="restartGame()">Играть заново</button>
+    </div>
+    <div id="gameWonMenu">
+      <h2>Вы победили!</h2>
+      <p id="gameWonScore">Финальный счёт: 0</p>
+      <button onclick="restartGame()">Играть заново</button>
     </div>
     <script>
       const canvas = document.getElementById("gameCanvas");
@@ -368,6 +391,8 @@
       // Start game with current config
       function startGameWithConfig() {
         document.getElementById("difficultyMenu").style.display = "none";
+        document.getElementById("gameOverMenu").style.display = "none";
+        document.getElementById("gameWonMenu").style.display = "none";
         gameStarted = true;
         gameLives = config.lives;
         resetGame();
@@ -387,7 +412,19 @@
         invincibilityTime = 0;
         targetX = null;
         targetY = null;
+        document.getElementById("gameOverMenu").style.display = "none";
+        document.getElementById("gameWonMenu").style.display = "none";
         setupStations();
+      }
+
+      // Restart game
+      function restartGame() {
+        document.getElementById("gameOverMenu").style.display = "none";
+        document.getElementById("gameWonMenu").style.display = "none";
+        document.getElementById("difficultyMenu").style.display = "block";
+        gameStarted = false;
+        gameOver = false;
+        gameWon = false;
       }
 
       // Setup stations based on config
@@ -408,27 +445,6 @@
           });
         }
       }
-
-      // Input and click handling
-      canvas.addEventListener("click", (event) => {
-        const rect = canvas.getBoundingClientRect();
-        const clickX =
-          (event.clientX - rect.left) * (canvas.width / rect.width);
-        const clickY =
-          (event.clientY - rect.top) * (canvas.height / rect.height);
-        if (
-          (gameOver || gameWon) &&
-          clickX >= 860 &&
-          clickX <= 1060 &&
-          clickY >= 490 &&
-          clickY <= 590
-        ) {
-          document.getElementById("difficultyMenu").style.display = "block";
-          gameStarted = false;
-          gameOver = false;
-          gameWon = false;
-        }
-      });
 
       // Function to drop a bomb
       function dropBomb() {
@@ -604,7 +620,6 @@
             const distY = targetY - plane.y;
             const distance = Math.sqrt(distX * distX + distY * distY);
             if (distance > 5) {
-              // Stop if within 5 pixels
               const speed = plane.speed;
               const scale = speed / distance;
               dx = distX * scale;
@@ -625,7 +640,6 @@
           plane.x += dx;
           plane.y += dy;
 
-          // Keep plane in bounds
           if (plane.y < 0) plane.y = 0;
           if (plane.y > canvas.height - plane.height)
             plane.y = canvas.height - plane.height;
@@ -868,71 +882,29 @@
         ctx.fillText(`Lives: ${gameLives}`, canvas.width - 150, 10);
       }
 
-      // Draw restart button
-      function drawRestartButton() {
-        if (gameOver || gameWon) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.moveTo(860, 490);
-          ctx.lineTo(1060, 490);
-          ctx.arcTo(1060, 540, 1010, 590, 25);
-          ctx.arcTo(860, 590, 860, 540, 25);
-          ctx.closePath();
-          const grd = ctx.createLinearGradient(860, 490, 1060, 590);
-          grd.addColorStop(0, "#4CAF50");
-          grd.addColorStop(1, "#45a049");
-          ctx.fillStyle = grd;
-          ctx.fill();
-          ctx.strokeStyle = "white";
-          ctx.lineWidth = 2;
-          ctx.stroke();
-          ctx.fillStyle = "white";
-          ctx.font = "20px Arial";
-          ctx.textAlign = "center";
-          ctx.textBaseline = "middle";
-          ctx.fillText("Restart", 960, 540);
-          ctx.restore();
-        }
-      }
-
-      // Game over screen
-      function drawGameOver() {
-        ctx.fillStyle = "white";
-        ctx.font = "40px Arial";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("Game Over", canvas.width / 2, canvas.height / 2 - 40);
-        ctx.font = "20px Arial";
-        ctx.fillText(
-          `Final Score: ${Math.floor(score)}`,
-          canvas.width / 2,
-          canvas.height / 2 + 40
-        );
-        drawRestartButton();
-      }
-
-      // Game won screen
-      function drawGameWon() {
-        ctx.fillStyle = "white";
-        ctx.font = "40px Arial";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("You Win!", canvas.width / 2, canvas.height / 2 - 40);
-        ctx.font = "20px Arial";
-        ctx.fillText(
-          `Final Score: ${Math.floor(score)}`,
-          canvas.width / 2,
-          canvas.height / 2 + 40
-        );
-        drawRestartButton();
-      }
-
       // Main game loop
       function gameLoop(timestamp) {
         if (!lastTimestamp) lastTimestamp = timestamp;
         const delta = timestamp - lastTimestamp;
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // Manage menu visibility
+        document.getElementById("difficultyMenu").style.display = gameStarted
+          ? "none"
+          : "block";
+        document.getElementById("gameOverMenu").style.display = gameOver
+          ? "block"
+          : "none";
+        document.getElementById("gameWonMenu").style.display = gameWon
+          ? "block"
+          : "none";
+        document.getElementById(
+          "gameOverScore"
+        ).textContent = `Финальный счёт: ${Math.floor(score)}`;
+        document.getElementById(
+          "gameWonScore"
+        ).textContent = `Финальный счёт: ${Math.floor(score)}`;
 
         if (gameStarted && !gameOver && !gameWon) {
           updatePlane();
@@ -966,10 +938,6 @@
           drawExplosions();
           drawStations();
           drawScore();
-        } else if (gameOver) {
-          drawGameOver();
-        } else if (gameWon) {
-          drawGameWon();
         }
 
         lastTimestamp = timestamp;
