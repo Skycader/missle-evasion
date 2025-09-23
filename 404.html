@@ -161,9 +161,19 @@
     </div>
     <div id="difficultyMenu">
       <h2>Выберите сложность</h2>
+      <h3>Классический режим</h3>
       <button onclick="startGame('easy')">Легко</button>
       <button onclick="startGame('medium')">Средне</button>
       <button onclick="startGame('hard')">Сложно</button>
+      <hr />
+      <h3>Игра против ЗРК</h3>
+      <button onclick="startGame('strela')">Ракетный комплекс Стрела-2</button>
+      <button onclick="startGame('osa')">Ракетный комплекс Оса</button>
+      <button onclick="startGame('buk')">Ракетный комплекс БУК-М1</button>
+      <button onclick="startGame('tor')">Ракетный комплекс Тор-М2</button>
+      <button onclick="startGame('panzer')">
+        Ракетный комплекс Панцирь-С1
+      </button>
       <button onclick="showCustomForm()">Настроить</button>
       <div id="customForm">
         <label
@@ -357,34 +367,89 @@
 
       // Start game with preset
       function startGame(difficulty) {
-        if (difficulty === "easy") {
-          config = {
-            maxSpeed: 3,
-            turnRate: 0.01,
-            fuelBase: 100,
-            drag: 0.98,
-            lives: 5,
-            numStations: 2,
-          };
-        } else if (difficulty === "medium") {
-          config = {
-            maxSpeed: 4,
-            turnRate: 0.02,
-            fuelBase: 150,
-            drag: 0.99,
-            lives: 3,
-            numStations: 3,
-          };
-        } else if (difficulty === "hard") {
-          config = {
-            maxSpeed: 5,
-            turnRate: 0.03,
-            fuelBase: 200,
-            drag: 0.995,
-            lives: 1,
-            numStations: 4,
-          };
+        switch (difficulty) {
+          case "easy":
+            config = {
+              maxSpeed: 3,
+              turnRate: 0.01,
+              fuelBase: 100,
+              drag: 0.98,
+              lives: 5,
+              numStations: 2,
+            };
+            break;
+          case "medium":
+            config = {
+              maxSpeed: 4,
+              turnRate: 0.02,
+              fuelBase: 150,
+              drag: 0.99,
+              lives: 3,
+              numStations: 3,
+            };
+            break;
+          case "hard":
+            config = {
+              maxSpeed: 5,
+              turnRate: 0.03,
+              fuelBase: 200,
+              drag: 0.995,
+              lives: 1,
+              numStations: 4,
+            };
+            break;
+          case "strela":
+            config = {
+              maxSpeed: 4,
+              turnRate: 0.01,
+              fuelBase: 50,
+              drag: 0.99,
+              lives: 1,
+              numStations: 1,
+            };
+            break;
+          case "osa":
+            config = {
+              maxSpeed: 5,
+              turnRate: 0.03,
+              fuelBase: 100,
+              drag: 0.99,
+              lives: 1,
+              numStations: 1,
+            };
+            break;
+          case "buk":
+            config = {
+              maxSpeed: 6,
+              turnRate: 0.05,
+              fuelBase: 150,
+              drag: 0.99,
+              lives: 1,
+              numStations: 1,
+            };
+            break;
+          case "tor":
+            config = {
+              maxSpeed: 7,
+              turnRate: 0.03,
+              fuelBase: 150,
+              drag: 0.99,
+              lives: 1,
+              numStations: 1,
+            };
+            break;
+          case "panzer":
+            config = {
+              maxSpeed: 12,
+              turnRate: 0.03,
+              fuelBase: 95,
+              drag: 0.99,
+              lives: 1,
+              numStations: 1,
+            };
+            break;
         }
+
         startGameWithConfig();
       }
 
