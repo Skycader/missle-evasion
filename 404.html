@@ -67,7 +67,7 @@
         max-height: 100%;
         width: 1920px;
         height: 1080px;
-        touch-action: none; /* Prevent default touch behaviors */
+        touch-action: none;
       }
       #fullscreenButton {
         position: absolute;
@@ -84,6 +84,23 @@
       }
       #fullscreenButton:hover {
         background: linear-gradient(#45a049, #4caf50);
+      }
+      #followCursorContainer {
+        position: absolute;
+        top: 60px;
+        right: 10px;
+        display: flex;
+        align-items: center;
+        color: white;
+        font-size: 16px;
+        z-index: 10;
+      }
+      #followCursor {
+        margin-right: 5px;
+        cursor: pointer;
+      }
+      #followCursorLabel {
+        cursor: pointer;
       }
       #difficultyMenu {
         position: absolute;
@@ -123,36 +140,42 @@
   <body>
     <canvas id="gameCanvas" width="1920" height="1080"></canvas>
     <button id="fullscreenButton">Full Screen</button>
+    <div id="followCursorContainer">
+      <input type="checkbox" id="followCursor" />
+      <label id="followCursorLabel" for="followCursor"
+        >Следовать за курсором</label
+      >
+    </div>
     <div id="difficultyMenu">
-      <h2>Select Difficulty</h2>
-      <button onclick="startGame('easy')">Easy</button>
-      <button onclick="startGame('medium')">Medium</button>
-      <button onclick="startGame('hard')">Hard</button>
-      <button onclick="showCustomForm()">Custom</button>
+      <h2>Выберите сложность</h2>
+      <button onclick="startGame('easy')">Легко</button>
+      <button onclick="startGame('medium')">Средне</button>
+      <button onclick="startGame('hard')">Сложно</button>
+      <button onclick="showCustomForm()">Настроить</button>
       <div id="customForm">
         <label
-          >Max Missile Speed:
+          >Макс. скорость ракет:
           <input id="maxSpeed" type="number" step="0.1" value="4" /></label
         ><br />
         <label
-          >Missile Maneuverability (turnRate):
+          >Маневренность ракет (turnRate):
           <input id="turnRate" type="number" step="0.01" value="0.02" /></label
         ><br />
         <label
-          >Missile Fuel (range):
+          >Топливо ракет (диапазон):
           <input id="fuelBase" type="number" value="150" /></label
         ><br />
         <label
-          >Missile Aerodynamics (drag, lower = shorter flight):
+          >Аэродинамика ракет (drag, меньше = короче полет):
           <input id="drag" type="number" step="0.001" value="0.99" /></label
         ><br />
-        <label>Player Lives: <input id="lives" type="number" value="3" /></label
+        <label>Жизни игрока: <input id="lives" type="number" value="3" /></label
         ><br />
         <label
-          >Number of Stations:
+          >Количество станций:
           <input id="numStations" type="number" value="3" /></label
         ><br />
-        <button onclick="startCustomGame()">Start Custom Game</button>
+        <button onclick="startCustomGame()">Начать игру</button>
       </div>
     </div>
     <script>
@@ -177,8 +200,6 @@
         height: 20,
         speed: 5,
         trail: [],
-        vx: 0,
-        vy: 0,
       };
       let keys = {};
       let missiles = [];
@@ -193,25 +214,9 @@
       let invincibilityTime = 0;
       const bombCooldown = 500;
       let stations = [];
-
-      // Joystick and bomb button
-      const joystick = {
-        centerX: 1820,
-        centerY: 980,
-        radius: 50,
-        thumbRadius: 20,
-        active: false,
-        thumbX: 1820,
-        thumbY: 980,
-        touchId: null,
-      };
-      const bombButton = {
-        x: 1720,
-        y: 980,
-        radius: 40,
-        pressed: false,
-        touchId: null,
-      };
+      let followCursor = false;
+      let targetX = null;
+      let targetY = null;
 
       let lastTimestamp = 0;
 
@@ -231,124 +236,53 @@
       });
       window.addEventListener("keyup", (e) => (keys[e.key] = false));
 
-      // Touch handling
-      canvas.addEventListener("touchstart", handleTouchStart);
-      canvas.addEventListener("touchmove", handleTouchMove);
-      canvas.addEventListener("touchend", handleTouchEnd);
+      // Checkbox handling
+      const followCursorCheckbox = document.getElementById("followCursor");
+      followCursorCheckbox.addEventListener("change", () => {
+        followCursor = followCursorCheckbox.checked;
+        if (!followCursor) {
+          targetX = null;
+          targetY = null;
+        }
+      });
 
-      function handleTouchStart(event) {
+      // Mouse and touch handling
+      canvas.addEventListener("mousemove", (event) => {
+        if (followCursor && gameStarted && !gameOver && !gameWon) {
+          const rect = canvas.getBoundingClientRect();
+          const scaleX = canvas.width / rect.width;
+          const scaleY = canvas.height / rect.height;
+          targetX = (event.clientX - rect.left) * scaleX - plane.width / 2;
+          targetY = (event.clientY - rect.top) * scaleY - plane.height / 2;
+        }
+      });
+
+      canvas.addEventListener("touchstart", (event) => {
         event.preventDefault();
         const rect = canvas.getBoundingClientRect();
         const scaleX = canvas.width / rect.width;
         const scaleY = canvas.height / rect.height;
+        const touch = event.changedTouches[0];
+        const touchX = (touch.clientX - rect.left) * scaleX;
+        const touchY = (touch.clientY - rect.top) * scaleY;
 
-        for (let i = 0; i < event.changedTouches.length; i++) {
-          const touch = event.changedTouches[i];
-          const touchX = (touch.clientX - rect.left) * scaleX;
-          const touchY = (touch.clientY - rect.top) * scaleY;
-
-          // Check joystick
-          const joystickDx = touchX - joystick.centerX;
-          const joystickDy = touchY - joystick.centerY;
-          if (
-            Math.sqrt(joystickDx * joystickDx + joystickDy * joystickDy) <=
-              joystick.radius &&
-            !joystick.active
-          ) {
-            joystick.active = true;
-            joystick.touchId = touch.identifier;
-            updateJoystick(touchX, touchY);
-            continue;
-          }
-
-          // Check bomb button
-          const bombDx = touchX - bombButton.x;
-          const bombDy = touchY - bombButton.y;
-          if (
-            Math.sqrt(bombDx * bombDx + bombDy * bombDy) <= bombButton.radius &&
-            !bombButton.pressed
-          ) {
-            if (
-              gameStarted &&
-              !gameOver &&
-              !gameWon &&
-              performance.now() - lastBombDrop > bombCooldown
-            ) {
-              dropBomb();
-              lastBombDrop = performance.now();
-              bombButton.pressed = true;
-              bombButton.touchId = touch.identifier;
-            }
-          }
+        // Drop bomb on any tap
+        if (
+          gameStarted &&
+          !gameOver &&
+          !gameWon &&
+          performance.now() - lastBombDrop > bombCooldown
+        ) {
+          dropBomb();
+          lastBombDrop = performance.now();
         }
-      }
 
-      function handleTouchMove(event) {
-        event.preventDefault();
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-
-        for (let i = 0; i < event.changedTouches.length; i++) {
-          const touch = event.changedTouches[i];
-          if (touch.identifier === joystick.touchId) {
-            const touchX = (touch.clientX - rect.left) * scaleX;
-            const touchY = (touch.clientY - rect.top) * scaleY;
-            updateJoystick(touchX, touchY);
-          }
+        // Set target position if followCursor is checked
+        if (followCursor) {
+          targetX = touchX - plane.width / 2;
+          targetY = touchY - plane.height / 2;
         }
-      }
-
-      function handleTouchEnd(event) {
-        event.preventDefault();
-        for (let i = 0; i < event.changedTouches.length; i++) {
-          const touch = event.changedTouches[i];
-          if (touch.identifier === joystick.touchId) {
-            joystick.active = false;
-            joystick.touchId = null;
-            joystick.thumbX = joystick.centerX;
-            joystick.thumbY = joystick.centerY;
-            plane.vx = 0;
-            plane.vy = 0;
-          }
-          if (touch.identifier === bombButton.touchId) {
-            bombButton.pressed = false;
-            bombButton.touchId = null;
-          }
-        }
-      }
-
-      function updateJoystick(touchX, touchY) {
-        const dx = touchX - joystick.centerX;
-        const dy = touchY - joystick.centerY;
-        const distance = Math.sqrt(dx * dx + dy * dy);
-        const maxDistance = joystick.radius;
-
-        // Normalize and limit thumbstick position
-        let thumbX, thumbY;
-        if (distance > maxDistance) {
-          const scale = maxDistance / distance;
-          thumbX = joystick.centerX + dx * scale;
-          thumbY = joystick.centerY + dy * scale;
-        } else {
-          thumbX = touchX;
-          thumbY = touchY;
-        }
-        joystick.thumbX = thumbX;
-        joystick.thumbY = thumbY;
-
-        // Set plane velocity
-        if (distance > 10) {
-          // Dead zone
-          const normalizedDx = dx / distance;
-          const normalizedDy = dy / distance;
-          plane.vx = normalizedDx * plane.speed;
-          plane.vy = normalizedDy * plane.speed;
-        } else {
-          plane.vx = 0;
-          plane.vy = 0;
-        }
-      }
+      });
 
       // Full-screen button handling
       const fullscreenButton = document.getElementById("fullscreenButton");
@@ -441,16 +375,7 @@
 
       // Reset game state
       function resetGame() {
-        plane = {
-          x: 960,
-          y: 100,
-          width: 60,
-          height: 20,
-          speed: 5,
-          trail: [],
-          vx: 0,
-          vy: 0,
-        };
+        plane = { x: 960, y: 100, width: 60, height: 20, speed: 5, trail: [] };
         missiles = [];
         bombs = [];
         explosions = [];
@@ -460,6 +385,8 @@
         gameWon = false;
         lastBombDrop = 0;
         invincibilityTime = 0;
+        targetX = null;
+        targetY = null;
         setupStations();
       }
 
@@ -596,7 +523,6 @@
           const length = missile.height;
           const thickness = missile.width;
 
-          // Guidance head (yellow tip)
           ctx.fillStyle = "#FFD700";
           ctx.beginPath();
           ctx.moveTo(length / 2, 0);
@@ -605,7 +531,6 @@
           ctx.closePath();
           ctx.fill();
 
-          // Body (red)
           ctx.fillStyle = "#B22222";
           ctx.beginPath();
           ctx.moveTo(length / 3, -thickness / 2);
@@ -616,7 +541,6 @@
           ctx.closePath();
           ctx.fill();
 
-          // Bottom fin (negative y)
           ctx.fillStyle = "#555";
           ctx.beginPath();
           ctx.moveTo(-length / 2 + 5, -thickness / 2);
@@ -625,7 +549,6 @@
           ctx.closePath();
           ctx.fill();
 
-          // Top fin (positive y)
           ctx.beginPath();
           ctx.moveTo(-length / 2 + 5, thickness / 2);
           ctx.lineTo(-length / 2 + 5, thickness / 2 + thickness);
@@ -670,73 +593,37 @@
         });
       }
 
-      // Function to draw joystick and bomb button
-      function drawControls() {
-        // Joystick
-        ctx.beginPath();
-        ctx.arc(
-          joystick.centerX,
-          joystick.centerY,
-          joystick.radius,
-          0,
-          Math.PI * 2
-        );
-        ctx.fillStyle = joystick.active
-          ? "rgba(100, 100, 100, 0.8)"
-          : "rgba(100, 100, 100, 0.3)";
-        ctx.fill();
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        if (joystick.active) {
-          ctx.beginPath();
-          ctx.arc(
-            joystick.thumbX,
-            joystick.thumbY,
-            joystick.thumbRadius,
-            0,
-            Math.PI * 2
-          );
-          ctx.fillStyle = "rgba(200, 200, 200, 0.8)";
-          ctx.fill();
-          ctx.strokeStyle = "white";
-          ctx.lineWidth = 2;
-          ctx.stroke();
-        }
-
-        // Bomb button
-        ctx.beginPath();
-        ctx.arc(bombButton.x, bombButton.y, bombButton.radius, 0, Math.PI * 2);
-        ctx.fillStyle =
-          bombButton.pressed || performance.now() - lastBombDrop < bombCooldown
-            ? "rgba(100, 100, 100, 0.8)"
-            : "rgba(0, 200, 0, 0.8)";
-        ctx.fill();
-        ctx.strokeStyle = "white";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        ctx.fillStyle = "white";
-        ctx.font = "20px Arial";
-        ctx.textAlign = "center";
-        ctx.textBaseline = "middle";
-        ctx.fillText("BOMB", bombButton.x, bombButton.y);
-      }
-
       // Function to update plane position
       function updatePlane() {
         if (gameStarted && !gameOver && !gameWon) {
-          // Keyboard controls
           let dx = 0;
           let dy = 0;
-          if (keys["ArrowUp"]) dy -= plane.speed;
-          if (keys["ArrowDown"]) dy += plane.speed;
-          if (keys["ArrowLeft"]) dx -= plane.speed;
-          if (keys["ArrowRight"]) dx += plane.speed;
 
-          // Combine with joystick controls
-          plane.x += dx + plane.vx;
-          plane.y += dy + plane.vy;
+          if (followCursor && targetX !== null && targetY !== null) {
+            const distX = targetX - plane.x;
+            const distY = targetY - plane.y;
+            const distance = Math.sqrt(distX * distX + distY * distY);
+            if (distance > 5) {
+              // Stop if within 5 pixels
+              const speed = plane.speed;
+              const scale = speed / distance;
+              dx = distX * scale;
+              dy = distY * scale;
+            } else {
+              targetX = null;
+              targetY = null;
+            }
+          } else {
+            if (keys["ArrowUp"] && plane.y > 0) dy -= plane.speed;
+            if (keys["ArrowDown"] && plane.y < canvas.height - plane.height)
+              dy += plane.speed;
+            if (keys["ArrowLeft"] && plane.x > 0) dx -= plane.speed;
+            if (keys["ArrowRight"] && plane.x < canvas.width - plane.width)
+              dx += plane.speed;
+          }
+
+          plane.x += dx;
+          plane.y += dy;
 
           // Keep plane in bounds
           if (plane.y < 0) plane.y = 0;
@@ -777,7 +664,7 @@
 
       // Function to update missiles
       function updateMissiles() {
-        const speedThreshold = 0.5; // Speed below which missile explodes
+        const speedThreshold = 0.5;
         missiles.forEach((missile, index) => {
           if (missile.exploding) return;
 
@@ -788,7 +675,6 @@
           const targetAngle = Math.atan2(dy, dx);
 
           if (missile.fuel > 0) {
-            // Powered phase
             missile.fuel -= 1;
             missile.vx += Math.cos(missile.angle) * missile.accel;
             missile.vy += Math.sin(missile.angle) * missile.accel;
@@ -820,7 +706,6 @@
               missile.vy = Math.sin(missile.angle) * speed;
             }
           } else {
-            // Inertial phase: pursue plane with drag, realign velocity, explode if speed too low
             const currentSpeed = Math.sqrt(
               missile.vx * missile.vx + missile.vy * missile.vy
             );
@@ -836,7 +721,6 @@
               missile.vx = Math.cos(missile.angle) * reducedSpeed;
               missile.vy = Math.sin(missile.angle) * reducedSpeed;
             } else {
-              // Explode instead of free fall
               missile.exploding = true;
               explosions.push({
                 x: missile.x + missile.width / 2,
@@ -852,7 +736,6 @@
           missile.x += missile.vx;
           missile.y += missile.vy;
 
-          // Update angle based on velocity in inertial phase
           if (
             missile.fuel <= 0 &&
             (Math.abs(missile.vx) > 0.001 || Math.abs(missile.vy) > 0.001)
@@ -979,8 +862,10 @@
       function drawScore() {
         ctx.fillStyle = "white";
         ctx.font = "20px Arial";
-        ctx.fillText(`Score: ${Math.floor(score)}`, 10, 30);
-        ctx.fillText(`Lives: ${gameLives}`, canvas.width - 150, 30);
+        ctx.textAlign = "left";
+        ctx.textBaseline = "top";
+        ctx.fillText(`Score: ${Math.floor(score)}`, 10, 10);
+        ctx.fillText(`Lives: ${gameLives}`, canvas.width - 150, 10);
       }
 
       // Draw restart button
@@ -1081,7 +966,6 @@
           drawExplosions();
           drawStations();
           drawScore();
-          drawControls();
         } else if (gameOver) {
           drawGameOver();
         } else if (gameWon) {
