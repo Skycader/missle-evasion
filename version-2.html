@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Airplane Dodge Game</title>
+    <style>
+      body {
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background-color: #000;
+      }
+      canvas {
+        border: 1px solid #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+
+      // Game variables
+      let plane = { x: 400, y: 100, width: 50, height: 20, speed: 5 };
+      let keys = {};
+      let missiles = [];
+      let explosions = [];
+      let score = 0;
+      let gameOver = false;
+      let lastMissileTime = 0;
+      let missileInterval = 2000; // Initial interval in ms
+
+      // Input handling
+      window.addEventListener("keydown", (e) => (keys[e.key] = true));
+      window.addEventListener("keyup", (e) => (keys[e.key] = false));
+
+      // Function to draw the plane (simple airplane shape)
+      function drawPlane() {
+        ctx.fillStyle = "blue";
+        ctx.beginPath();
+        ctx.moveTo(plane.x + plane.width / 2, plane.y); // Nose
+        ctx.lineTo(plane.x, plane.y + plane.height); // Left wing
+        ctx.lineTo(plane.x + plane.width / 4, plane.y + plane.height / 2);
+        ctx.lineTo(plane.x, plane.y + plane.height / 2); // Left tail
+        ctx.lineTo(plane.x + plane.width / 4, plane.y + plane.height);
+        ctx.lineTo(plane.x + plane.width / 2, plane.y + plane.height / 2); // Body
+        ctx.lineTo(plane.x + (plane.width * 3) / 4, plane.y + plane.height);
+        ctx.lineTo(plane.x + plane.width, plane.y + plane.height / 2); // Right tail
+        ctx.lineTo(plane.x + (plane.width * 3) / 4, plane.y + plane.height / 2);
+        ctx.lineTo(plane.x + plane.width, plane.y + plane.height); // Right wing
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Function to draw missiles (simple rocket shape, rotated)
+      function drawMissiles() {
+        missiles.forEach((missile) => {
+          if (missile.exploding) return; // Don't draw if exploding
+          ctx.save();
+          ctx.translate(
+            missile.x + missile.width / 2,
+            missile.y + missile.height / 2
+          );
+          ctx.rotate(missile.angle);
+          ctx.fillStyle = "red";
+          ctx.beginPath();
+          ctx.moveTo(0, -missile.height / 2); // Tip
+          ctx.lineTo(-missile.width / 2, -missile.height / 6);
+          ctx.lineTo(-missile.width / 2, missile.height / 2);
+          ctx.lineTo(missile.width / 2, missile.height / 2);
+          ctx.lineTo(missile.width / 2, -missile.height / 6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        });
+      }
+
+      // Function to draw explosions
+      function drawExplosions() {
+        explosions.forEach((expl) => {
+          ctx.fillStyle = `rgba(255, 165, 0, ${1 - expl.frame / 20})`; // Orange with fade
+          ctx.beginPath();
+          ctx.arc(expl.x, expl.y, expl.radius, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      // Function to update plane position
+      function updatePlane() {
+        if (keys["ArrowUp"] && plane.y > 0) plane.y -= plane.speed;
+        if (keys["ArrowDown"] && plane.y < canvas.height - plane.height)
+          plane.y += plane.speed;
+        if (keys["ArrowLeft"] && plane.x > 0) plane.x -= plane.speed;
+        if (keys["ArrowRight"] && plane.x < canvas.width - plane.width)
+          plane.x += plane.speed;
+      }
+
+      // Function to spawn a missile
+      function spawnMissile() {
+        // Calculate initial angle towards plane with slight randomization
+        const dx = plane.x + plane.width / 2 - Math.random() * canvas.width;
+        const dy = plane.y + plane.height / 2 - canvas.height;
+        const initialAngle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.2; // ±0.1 radians (~5.7°)
+        const missile = {
+          x: Math.random() * canvas.width,
+          y: canvas.height,
+          width: 10,
+          height: 30,
+          speed: 4 + score / 10000, // A bit faster
+          fuel: 300 + Math.random() * 100, // Random fuel between 300-400 frames (~5-6.7 seconds at 60fps)
+          angle: initialAngle,
+          turnRate: 0.02, // Very limited turn rate (radians per frame)
+          exploding: false,
+        };
+        missiles.push(missile);
+      }
+
+      // Function to update missiles
+      function updateMissiles() {
+        missiles.forEach((missile, index) => {
+          if (missile.exploding) return;
+
+          // Decrease fuel
+          missile.fuel -= 1;
+
+          if (missile.fuel <= 0) {
+            // Explode
+            missile.exploding = true;
+            explosions.push({
+              x: missile.x + missile.width / 2,
+              y: missile.y + missile.height / 2,
+              radius: 30,
+              frame: 0,
+            });
+            missiles.splice(index, 1);
+            return;
+          }
+
+          // Homing logic: slight angle adjustment towards plane
+          const targetX = plane.x + plane.width / 2;
+          const targetY = plane.y + plane.height / 2;
+          const dx = targetX - (missile.x + missile.width / 2);
+          const dy = targetY - (missile.y + missile.height / 2);
+          const targetAngle = Math.atan2(dy, dx);
+
+          // Calculate the smallest angle difference
+          let angleDiff = targetAngle - missile.angle;
+          while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+          while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+          // Apply very limited turn rate
+          const maxTurn = missile.turnRate;
+          missile.angle += Math.max(-maxTurn, Math.min(maxTurn, angleDiff));
+
+          // Move missile based on its current angle
+          missile.x += Math.cos(missile.angle) * missile.speed;
+          missile.y += Math.sin(missile.angle) * missile.speed;
+
+          // Remove if off screen
+          if (
+            missile.y < -missile.height ||
+            missile.x < -missile.width ||
+            missile.x > canvas.width ||
+            missile.y > canvas.height
+          ) {
+            missiles.splice(index, 1);
+          }
+        });
+      }
+
+      // Update explosions
+      function updateExplosions() {
+        explosions.forEach((expl, index) => {
+          expl.frame += 1;
+          expl.radius += 1; // Grow a bit
+          if (expl.frame > 20) explosions.splice(index, 1); // Remove after 20 frames
+        });
+      }
+
+      // Collision detection with missiles and explosions
+      function checkCollisions() {
+        // Check missiles
+        missiles.forEach((missile) => {
+          if (missile.exploding) return;
+          if (
+            missile.x < plane.x + plane.width &&
+            missile.x + missile.width > plane.x &&
+            missile.y < plane.y + plane.height &&
+            missile.y + missile.height > plane.y
+          ) {
+            gameOver = true;
+          }
+        });
+
+        // Check explosions (circle vs rect)
+        explosions.forEach((expl) => {
+          const distX = Math.abs(expl.x - (plane.x + plane.width / 2));
+          const distY = Math.abs(expl.y - (plane.y + plane.height / 2));
+          if (distX > plane.width / 2 + expl.radius) return;
+          if (distY > plane.height / 2 + expl.radius) return;
+          if (distX <= plane.width / 2 || distY <= plane.height / 2) {
+            gameOver = true;
+          } else {
+            const dx = distX - plane.width / 2;
+            const dy = distY - plane.height / 2;
+            if (dx * dx + dy * dy <= expl.radius * expl.radius) {
+              gameOver = true;
+            }
+          }
+        });
+      }
+
+      // Draw score
+      function drawScore() {
+        ctx.fillStyle = "white";
+        ctx.font = "20px Arial";
+        ctx.fillText(`Score: ${Math.floor(score)}`, 10, 30);
+      }
+
+      // Game over screen
+      function drawGameOver() {
+        ctx.fillStyle = "white";
+        ctx.font = "40px Arial";
+        ctx.fillText("Game Over", canvas.width / 2 - 100, canvas.height / 2);
+        ctx.font = "20px Arial";
+        ctx.fillText(
+          `Final Score: ${Math.floor(score)}`,
+          canvas.width / 2 - 80,
+          canvas.height / 2 + 40
+        );
+      }
+
+      // Main game loop
+      function gameLoop(timestamp) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (!gameOver) {
+          updatePlane();
+          updateMissiles();
+          updateExplosions();
+          checkCollisions();
+
+          // Spawn missiles periodically
+          if (timestamp - lastMissileTime > missileInterval) {
+            spawnMissile();
+            lastMissileTime = timestamp;
+            missileInterval = Math.max(500, missileInterval - 10); // Decrease interval over time
+          }
+
+          // Increase score over time
+          score += 1 / 60; // Assuming 60 FPS
+
+          drawPlane();
+          drawMissiles();
+          drawExplosions();
+          drawScore();
+        } else {
+          drawGameOver();
+        }
+
+        requestAnimationFrame(gameLoop);
+      }
+
+      // Start the game
+      requestAnimationFrame(gameLoop);
+    </script>
+  </body>
+</html>

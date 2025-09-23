@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Airplane Dodge Game</title>
+    <style>
+      body {
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background-color: #000;
+      }
+      canvas {
+        border: 1px solid #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+
+      // Game variables
+      let plane = {
+        x: 400,
+        y: 100,
+        width: 60,
+        height: 20,
+        speed: 5,
+        trail: [],
+      };
+      let keys = {};
+      let missiles = [];
+      let explosions = [];
+      let score = 0;
+      let gameOver = false;
+
+      // Air defense stations
+      const stations = [
+        {
+          x: 100,
+          y: 550,
+          width: 50,
+          height: 50,
+          lastLaunch: 0,
+          launchInterval: 2000 + Math.random() * 2000,
+        },
+        {
+          x: 350,
+          y: 550,
+          width: 50,
+          height: 50,
+          lastLaunch: 0,
+          launchInterval: 2000 + Math.random() * 2000,
+        },
+        {
+          x: 600,
+          y: 550,
+          width: 50,
+          height: 50,
+          lastLaunch: 0,
+          launchInterval: 2000 + Math.random() * 2000,
+        },
+      ];
+
+      let lastMissileTime = 0;
+      let lastTimestamp = 0;
+
+      // Input and click handling
+      window.addEventListener("keydown", (e) => (keys[e.key] = true));
+      window.addEventListener("keyup", (e) => (keys[e.key] = false));
+      canvas.addEventListener("click", (event) => {
+        const rect = canvas.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+        if (
+          gameOver &&
+          clickX >= 350 &&
+          clickX <= 450 &&
+          clickY >= 300 &&
+          clickY <= 350
+        ) {
+          resetGame();
+        }
+      });
+
+      // Function to reset the game
+      function resetGame() {
+        plane = { x: 400, y: 100, width: 60, height: 20, speed: 5, trail: [] };
+        missiles = [];
+        explosions = [];
+        score = 0;
+        gameOver = false;
+        stations.forEach((station) => {
+          station.lastLaunch = 0;
+          station.launchInterval = 2000 + Math.random() * 2000;
+        });
+      }
+
+      // Function to update and draw smoke trails
+      function updateAndDrawTrail(trail, x, y) {
+        trail.push({ x, y, age: 0 });
+        ctx.fillStyle = "rgba(200, 200, 200, 0.5)";
+        trail.forEach((particle, index) => {
+          particle.age += 1;
+          if (particle.age > 30) {
+            trail.splice(index, 1);
+            return;
+          }
+          const alpha = 1 - particle.age / 30;
+          ctx.beginPath();
+          ctx.arc(
+            particle.x,
+            particle.y,
+            3 * (1 - particle.age / 30),
+            0,
+            Math.PI * 2
+          );
+          ctx.fillStyle = `rgba(200, 200, 200, ${alpha})`;
+          ctx.fill();
+        });
+      }
+
+      // Function to draw the plane (sleeker jet-like shape with trail)
+      function drawPlane() {
+        const trailX = plane.x + plane.width / 4;
+        const trailY = plane.y + plane.height / 2;
+        updateAndDrawTrail(plane.trail, trailX, trailY);
+
+        ctx.fillStyle = "#4682B4";
+        ctx.beginPath();
+        ctx.moveTo(plane.x + plane.width, plane.y + plane.height / 2);
+        ctx.lineTo(plane.x + plane.width * 0.7, plane.y);
+        ctx.lineTo(plane.x + plane.width * 0.4, plane.y);
+        ctx.lineTo(plane.x + plane.width * 0.2, plane.y + plane.height * 0.3);
+        ctx.lineTo(plane.x, plane.y + plane.height * 0.3);
+        ctx.lineTo(plane.x + plane.width * 0.2, plane.y + plane.height * 0.7);
+        ctx.lineTo(plane.x + plane.width * 0.4, plane.y + plane.height);
+        ctx.lineTo(plane.x + plane.width * 0.7, plane.y + plane.height);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = "#333";
+        ctx.beginPath();
+        ctx.moveTo(plane.x + plane.width * 0.7, plane.y + plane.height * 0.3);
+        ctx.lineTo(plane.x + plane.width * 0.9, plane.y + plane.height / 2);
+        ctx.lineTo(plane.x + plane.width * 0.7, plane.y + plane.height * 0.7);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Function to draw missiles (streamlined rocket shape with trail, nose aligned with velocity)
+      function drawMissiles() {
+        missiles.forEach((missile) => {
+          if (missile.exploding) return;
+
+          const trailX =
+            missile.x +
+            missile.width / 2 -
+            (Math.cos(missile.angle) * missile.height) / 2;
+          const trailY =
+            missile.y +
+            missile.height / 2 -
+            (Math.sin(missile.angle) * missile.height) / 2;
+          updateAndDrawTrail(missile.trail, trailX, trailY);
+
+          ctx.save();
+          ctx.translate(
+            missile.x + missile.width / 2,
+            missile.y + missile.height / 2
+          );
+          ctx.rotate(missile.angle);
+          ctx.fillStyle = "#B22222";
+          ctx.beginPath();
+          ctx.moveTo(0, -missile.height / 2);
+          ctx.lineTo(-missile.width / 2, -missile.height / 4);
+          ctx.lineTo(-missile.width / 2, missile.height / 2);
+          ctx.lineTo(0, missile.height / 2 + 5);
+          ctx.lineTo(missile.width / 2, missile.height / 2);
+          ctx.lineTo(missile.width / 2, -missile.height / 4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.fillStyle = "#555";
+          ctx.beginPath();
+          ctx.moveTo(-missile.width / 2, missile.height / 4);
+          ctx.lineTo(-missile.width, missile.height / 4);
+          ctx.lineTo(-missile.width / 2, missile.height / 2);
+          ctx.closePath();
+          ctx.fill();
+          ctx.beginPath();
+          ctx.moveTo(missile.width / 2, missile.height / 4);
+          ctx.lineTo(missile.width, missile.height / 4);
+          ctx.lineTo(missile.width / 2, missile.height / 2);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        });
+      }
+
+      // Function to draw air defense stations
+      function drawStations() {
+        ctx.fillStyle = "#2E8B57";
+        stations.forEach((station) => {
+          ctx.fillRect(station.x, station.y, station.width, station.height);
+          ctx.fillStyle = "#555";
+          ctx.fillRect(station.x + 10, station.y - 20, 30, 20);
+        });
+      }
+
+      // Function to draw explosions
+      function drawExplosions() {
+        explosions.forEach((expl) => {
+          ctx.fillStyle = `rgba(255, 165, 0, ${1 - expl.frame / 20})`;
+          ctx.beginPath();
+          ctx.arc(expl.x, expl.y, expl.radius, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      // Function to update plane position
+      function updatePlane() {
+        if (keys["ArrowUp"] && plane.y > 0) plane.y -= plane.speed;
+        if (keys["ArrowDown"] && plane.y < canvas.height - plane.height)
+          plane.y += plane.speed;
+        if (keys["ArrowLeft"] && plane.x > 0) plane.x -= plane.speed;
+        if (keys["ArrowRight"] && plane.x < canvas.width - plane.width)
+          plane.x += plane.speed;
+      }
+
+      // Function to spawn a missile from a station
+      function spawnMissile(station, timestamp) {
+        const dx = plane.x + plane.width / 2 - (station.x + station.width / 2);
+        const dy = plane.y + plane.height / 2 - (station.y - 20);
+        const initialAngle = Math.atan2(dy, dx) + (Math.random() - 0.5) * 0.2;
+        const missile = {
+          x: station.x + station.width / 2,
+          y: station.y - 20,
+          width: 10,
+          height: 30,
+          speed: 4 + score / 10000,
+          fuel: 300 + Math.random() * 100,
+          angle: initialAngle,
+          turnRate: 0.02,
+          trail: [],
+          exploding: false,
+          vx: Math.cos(initialAngle) * (4 + score / 10000),
+          vy: Math.sin(initialAngle) * (4 + score / 10000),
+        };
+        missiles.push(missile);
+        station.lastLaunch = timestamp;
+      }
+
+      // Function to update missiles
+      function updateMissiles() {
+        missiles.forEach((missile, index) => {
+          if (missile.exploding) return;
+
+          missile.fuel -= 1;
+
+          if (missile.fuel <= 0) {
+            missile.exploding = true;
+            explosions.push({
+              x: missile.x + missile.width / 2,
+              y: missile.y + missile.height / 2,
+              radius: 30,
+              frame: 0,
+            });
+            missiles.splice(index, 1);
+            return;
+          }
+
+          const targetX = plane.x + plane.width / 2;
+          const targetY = plane.y + plane.height / 2;
+          const dx = targetX - (missile.x + missile.width / 2);
+          const dy = targetY - (missile.y + missile.height / 2);
+          const targetAngle = Math.atan2(dy, dx);
+
+          const accel = 0.05;
+          missile.vx += Math.cos(targetAngle) * accel;
+          missile.vy += Math.sin(targetAngle) * accel;
+
+          const currentSpeed = Math.sqrt(
+            missile.vx * missile.vx + missile.vy * missile.vy
+          );
+          if (currentSpeed > missile.speed) {
+            const scale = missile.speed / currentSpeed;
+            missile.vx *= scale;
+            missile.vy *= scale;
+          }
+
+          missile.x += missile.vx;
+          missile.y += missile.vy;
+
+          missile.angle = Math.atan2(missile.vy, missile.vx);
+
+          if (
+            missile.y < -missile.height ||
+            missile.x < -missile.width ||
+            missile.x > canvas.width ||
+            missile.y > canvas.height
+          ) {
+            missiles.splice(index, 1);
+          }
+        });
+      }
+
+      // Update explosions
+      function updateExplosions() {
+        explosions.forEach((expl, index) => {
+          expl.frame += 1;
+          expl.radius += 1;
+          if (expl.frame > 20) explosions.splice(index, 1);
+        });
+      }
+
+      // Collision detection with missiles and explosions
+      function checkCollisions() {
+        missiles.forEach((missile) => {
+          if (missile.exploding) return;
+          if (
+            missile.x < plane.x + plane.width &&
+            missile.x + missile.width > plane.x &&
+            missile.y < plane.y + plane.height &&
+            missile.y + missile.height > plane.y
+          ) {
+            gameOver = true;
+          }
+        });
+
+        explosions.forEach((expl) => {
+          const distX = Math.abs(expl.x - (plane.x + plane.width / 2));
+          const distY = Math.abs(expl.y - (plane.y + plane.height / 2));
+          if (distX > plane.width / 2 + expl.radius) return;
+          if (distY > plane.height / 2 + expl.radius) return;
+          if (distX <= plane.width / 2 || distY <= plane.height / 2) {
+            gameOver = true;
+          } else {
+            const dx = distX - plane.width / 2;
+            const dy = distY - plane.height / 2;
+            if (dx * dx + dy * dy <= expl.radius * expl.radius) {
+              gameOver = true;
+            }
+          }
+        });
+      }
+
+      // Draw score
+      function drawScore() {
+        ctx.fillStyle = "white";
+        ctx.font = "20px Arial";
+        ctx.fillText(`Score: ${Math.floor(score)}`, 10, 30);
+      }
+
+      // Draw restart button
+      function drawRestartButton() {
+        if (gameOver) {
+          ctx.fillStyle = "green";
+          ctx.fillRect(350, 300, 100, 50);
+          ctx.fillStyle = "white";
+          ctx.font = "20px Arial";
+          ctx.fillText("Restart", 380, 330);
+        }
+      }
+
+      // Game over screen
+      function drawGameOver() {
+        ctx.fillStyle = "white";
+        ctx.font = "40px Arial";
+        ctx.fillText("Game Over", canvas.width / 2 - 100, canvas.height / 2);
+        ctx.font = "20px Arial";
+        ctx.fillText(
+          `Final Score: ${Math.floor(score)}`,
+          canvas.width / 2 - 80,
+          canvas.height / 2 + 40
+        );
+        drawRestartButton();
+      }
+
+      // Main game loop
+      function gameLoop(timestamp) {
+        if (!lastTimestamp) lastTimestamp = timestamp;
+        const delta = timestamp - lastTimestamp;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (!gameOver) {
+          updatePlane();
+          updateMissiles();
+          updateExplosions();
+          checkCollisions();
+
+          stations.forEach((station) => {
+            if (timestamp - station.lastLaunch > station.launchInterval) {
+              spawnMissile(station, timestamp);
+              station.launchInterval = 2000 + Math.random() * 2000;
+            }
+          });
+
+          score += delta / 1000 / 60;
+
+          drawPlane();
+          drawMissiles();
+          drawExplosions();
+          drawStations();
+          drawScore();
+        } else {
+          drawGameOver();
+        }
+
+        lastTimestamp = timestamp;
+        requestAnimationFrame(gameLoop);
+      }
+
+      // Start the game
+      requestAnimationFrame(gameLoop);
+    </script>
+  </body>
+</html>

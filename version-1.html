@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Airplane Dodge Game</title>
+    <style>
+      body {
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background-color: #000;
+      }
+      canvas {
+        border: 1px solid #fff;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+
+      // Game variables
+      let plane = { x: 400, y: 100, width: 50, height: 20, speed: 5 };
+      let keys = {};
+      let missiles = [];
+      let score = 0;
+      let gameOver = false;
+      let lastMissileTime = 0;
+      let missileInterval = 2000; // Initial interval in ms
+
+      // Input handling
+      window.addEventListener("keydown", (e) => (keys[e.key] = true));
+      window.addEventListener("keyup", (e) => (keys[e.key] = false));
+
+      // Function to draw the plane
+      function drawPlane() {
+        ctx.fillStyle = "blue";
+        ctx.fillRect(plane.x, plane.y, plane.width, plane.height);
+      }
+
+      // Function to draw missiles
+      function drawMissiles() {
+        missiles.forEach((missile) => {
+          ctx.fillStyle = "red";
+          ctx.fillRect(missile.x, missile.y, missile.width, missile.height);
+        });
+      }
+
+      // Function to update plane position
+      function updatePlane() {
+        if (keys["ArrowUp"] && plane.y > 0) plane.y -= plane.speed;
+        if (keys["ArrowDown"] && plane.y < canvas.height - plane.height)
+          plane.y += plane.speed;
+        if (keys["ArrowLeft"] && plane.x > 0) plane.x -= plane.speed;
+        if (keys["ArrowRight"] && plane.x < canvas.width - plane.width)
+          plane.x += plane.speed;
+      }
+
+      // Function to spawn a missile
+      function spawnMissile() {
+        const missile = {
+          x: Math.random() * canvas.width,
+          y: canvas.height,
+          width: 10,
+          height: 20,
+          speed: 3 + score / 10000, // Increase speed over time
+        };
+        missiles.push(missile);
+      }
+
+      // Function to update missiles
+      function updateMissiles() {
+        missiles.forEach((missile, index) => {
+          // Homing logic: move towards plane
+          const dx =
+            plane.x + plane.width / 2 - (missile.x + missile.width / 2);
+          const dy =
+            plane.y + plane.height / 2 - (missile.y + missile.height / 2);
+          const angle = Math.atan2(dy, dx);
+          missile.x += Math.cos(angle) * missile.speed;
+          missile.y += Math.sin(angle) * missile.speed;
+
+          // Remove if off screen
+          if (missile.y < -missile.height) missiles.splice(index, 1);
+        });
+      }
+
+      // Collision detection
+      function checkCollisions() {
+        missiles.forEach((missile) => {
+          if (
+            missile.x < plane.x + plane.width &&
+            missile.x + missile.width > plane.x &&
+            missile.y < plane.y + plane.height &&
+            missile.y + missile.height > plane.y
+          ) {
+            gameOver = true;
+          }
+        });
+      }
+
+      // Draw score
+      function drawScore() {
+        ctx.fillStyle = "white";
+        ctx.font = "20px Arial";
+        ctx.fillText(`Score: ${Math.floor(score)}`, 10, 30);
+      }
+
+      // Game over screen
+      function drawGameOver() {
+        ctx.fillStyle = "white";
+        ctx.font = "40px Arial";
+        ctx.fillText("Game Over", canvas.width / 2 - 100, canvas.height / 2);
+        ctx.font = "20px Arial";
+        ctx.fillText(
+          `Final Score: ${Math.floor(score)}`,
+          canvas.width / 2 - 80,
+          canvas.height / 2 + 40
+        );
+      }
+
+      // Main game loop
+      function gameLoop(timestamp) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (!gameOver) {
+          updatePlane();
+          updateMissiles();
+          checkCollisions();
+
+          // Spawn missiles periodically
+          if (timestamp - lastMissileTime > missileInterval) {
+            spawnMissile();
+            lastMissileTime = timestamp;
+            missileInterval = Math.max(500, missileInterval - 10); // Decrease interval over time
+          }
+
+          // Increase score over time
+          score += 1 / 60; // Assuming 60 FPS
+
+          drawPlane();
+          drawMissiles();
+          drawScore();
+        } else {
+          drawGameOver();
+        }
+
+        requestAnimationFrame(gameLoop);
+      }
+
+      // Start the game
+      requestAnimationFrame(gameLoop);
+    </script>
+  </body>
+</html>
