@@ -1,0 +1,873 @@
+<script type="text/javascript">
+  var gk_isXlsx = false;
+  var gk_xlsxFileLookup = {};
+  var gk_fileData = {};
+  function filledCell(cell) {
+    return cell !== "" && cell != null;
+  }
+  function loadFileData(filename) {
+    if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+      try {
+        var workbook = XLSX.read(gk_fileData[filename], { type: "base64" });
+        var firstSheetName = workbook.SheetNames[0];
+        var worksheet = workbook.Sheets[firstSheetName];
+
+        // Convert sheet to JSON to filter blank rows
+        var jsonData = XLSX.utils.sheet_to_json(worksheet, {
+          header: 1,
+          blankrows: false,
+          defval: "",
+        });
+        // Filter out blank rows (rows where all cells are empty, null, or undefined)
+        var filteredData = jsonData.filter((row) => row.some(filledCell));
+
+        // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+        var headerRowIndex = filteredData.findIndex(
+          (row, index) =>
+            row.filter(filledCell).length >=
+            filteredData[index + 1]?.filter(filledCell).length
+        );
+        // Fallback
+        if (headerRowIndex === -1 || headerRowIndex > 25) {
+          headerRowIndex = 0;
+        }
+
+        // Convert filtered JSON back to CSV
+        var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+        csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+        return csv;
+      } catch (e) {
+        console.error(e);
+        return "";
+      }
+    }
+    return gk_fileData[filename] || "";
+  }
+</script>
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Airplane Dodge Game</title>
+    <style>
+      body {
+        margin: 0;
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        height: 100vh;
+        background-color: #000;
+        position: relative;
+      }
+      canvas {
+        border: 1px solid #fff;
+        max-width: 100%;
+        max-height: 100%;
+      }
+      #fullscreenButton {
+        position: absolute;
+        top: 10px;
+        right: 10px;
+        padding: 10px 20px;
+        background: linear-gradient(#4caf50, #45a049);
+        color: white;
+        border: 2px solid white;
+        border-radius: 10px;
+        cursor: pointer;
+        font-size: 16px;
+        z-index: 10;
+      }
+      #fullscreenButton:hover {
+        background: linear-gradient(#45a049, #4caf50);
+      }
+      #difficultyMenu {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: rgba(0, 0, 0, 0.8);
+        padding: 20px;
+        border: 2px solid white;
+        color: white;
+        text-align: center;
+        z-index: 20;
+      }
+      #difficultyMenu button {
+        display: block;
+        margin: 10px auto;
+        padding: 10px 20px;
+        background: #4caf50;
+        color: white;
+        border: none;
+        cursor: pointer;
+        font-size: 18px;
+      }
+      #difficultyMenu button:hover {
+        background: #45a049;
+      }
+      #customForm {
+        display: none;
+      }
+      #customForm input {
+        margin: 5px;
+        padding: 5px;
+        width: 80%;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="gameCanvas" width="1920" height="1080"></canvas>
+    <button id="fullscreenButton">Full Screen</button>
+    <div id="difficultyMenu">
+      <h2>Select Difficulty</h2>
+      <button onclick="startGame('easy')">Easy</button>
+      <button onclick="startGame('medium')">Medium</button>
+      <button onclick="startGame('hard')">Hard</button>
+      <button onclick="showCustomForm()">Custom</button>
+      <div id="customForm">
+        <label
+          >Max Missile Speed:
+          <input id="maxSpeed" type="number" step="0.1" value="4" /></label
+        ><br />
+        <label
+          >Missile Maneuverability (turnRate):
+          <input id="turnRate" type="number" step="0.01" value="0.02" /></label
+        ><br />
+        <label
+          >Missile Fuel (range):
+          <input id="fuelBase" type="number" value="150" /></label
+        ><br />
+        <label
+          >Missile Aerodynamics (drag, lower = shorter flight):
+          <input id="drag" type="number" step="0.001" value="0.99" /></label
+        ><br />
+        <label>Player Lives: <input id="lives" type="number" value="3" /></label
+        ><br />
+        <label
+          >Number of Stations:
+          <input id="numStations" type="number" value="3" /></label
+        ><br />
+        <button onclick="startCustomGame()">Start Custom Game</button>
+      </div>
+    </div>
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+
+      // Default config
+      let config = {
+        maxSpeed: 4,
+        turnRate: 0.02,
+        fuelBase: 150,
+        drag: 0.99,
+        lives: 3,
+        numStations: 3,
+      };
+
+      // Game variables
+      let plane = {
+        x: 960,
+        y: 100,
+        width: 60,
+        height: 20,
+        speed: 5,
+        trail: [],
+      };
+      let keys = {};
+      let missiles = [];
+      let bombs = [];
+      let explosions = [];
+      let score = 0;
+      let gameLives = config.lives;
+      let gameOver = false;
+      let gameWon = false;
+      let gameStarted = false;
+      let lastBombDrop = 0;
+      let invincibilityTime = 0;
+      const bombCooldown = 500;
+      let stations = [];
+
+      let lastTimestamp = 0;
+
+      // Input handling
+      window.addEventListener("keydown", (e) => {
+        keys[e.key] = true;
+        if (
+          e.key === " " &&
+          gameStarted &&
+          !gameOver &&
+          !gameWon &&
+          performance.now() - lastBombDrop > bombCooldown
+        ) {
+          dropBomb();
+          lastBombDrop = performance.now();
+        }
+      });
+      window.addEventListener("keyup", (e) => (keys[e.key] = false));
+
+      // Full-screen button handling
+      const fullscreenButton = document.getElementById("fullscreenButton");
+      fullscreenButton.addEventListener("click", toggleFullScreen);
+
+      function toggleFullScreen() {
+        if (!document.fullscreenElement) {
+          if (canvas.requestFullscreen) {
+            canvas.requestFullscreen();
+          } else if (canvas.mozRequestFullScreen) {
+            canvas.mozRequestFullScreen();
+          } else if (canvas.webkitRequestFullscreen) {
+            canvas.webkitRequestFullscreen();
+          } else if (canvas.msRequestFullscreen) {
+            canvas.msRequestFullscreen();
+          }
+          fullscreenButton.textContent = "Exit Full Screen";
+        } else {
+          if (document.exitFullscreen) {
+            document.exitFullscreen();
+          } else if (document.mozCancelFullScreen) {
+            document.mozCancelFullScreen();
+          } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+          } else if (document.msExitFullscreen) {
+            document.msExitFullscreen();
+          }
+          fullscreenButton.textContent = "Full Screen";
+        }
+      }
+
+      // Show custom form
+      function showCustomForm() {
+        document.getElementById("customForm").style.display = "block";
+      }
+
+      // Start custom game
+      function startCustomGame() {
+        config.maxSpeed = parseFloat(document.getElementById("maxSpeed").value);
+        config.turnRate = parseFloat(document.getElementById("turnRate").value);
+        config.fuelBase = parseInt(document.getElementById("fuelBase").value);
+        config.drag = parseFloat(document.getElementById("drag").value);
+        config.lives = parseInt(document.getElementById("lives").value);
+        config.numStations = parseInt(
+          document.getElementById("numStations").value
+        );
+        startGameWithConfig();
+      }
+
+      // Start game with preset
+      function startGame(difficulty) {
+        if (difficulty === "easy") {
+          config = {
+            maxSpeed: 3,
+            turnRate: 0.01,
+            fuelBase: 100,
+            drag: 0.98,
+            lives: 5,
+            numStations: 2,
+          };
+        } else if (difficulty === "medium") {
+          config = {
+            maxSpeed: 4,
+            turnRate: 0.02,
+            fuelBase: 150,
+            drag: 0.99,
+            lives: 3,
+            numStations: 3,
+          };
+        } else if (difficulty === "hard") {
+          config = {
+            maxSpeed: 5,
+            turnRate: 0.03,
+            fuelBase: 200,
+            drag: 0.995,
+            lives: 1,
+            numStations: 4,
+          };
+        }
+        startGameWithConfig();
+      }
+
+      // Start game with current config
+      function startGameWithConfig() {
+        document.getElementById("difficultyMenu").style.display = "none";
+        gameStarted = true;
+        gameLives = config.lives;
+        resetGame();
+      }
+
+      // Reset game state
+      function resetGame() {
+        plane = { x: 960, y: 100, width: 60, height: 20, speed: 5, trail: [] };
+        missiles = [];
+        bombs = [];
+        explosions = [];
+        score = 0;
+        gameLives = config.lives;
+        gameOver = false;
+        gameWon = false;
+        lastBombDrop = 0;
+        invincibilityTime = 0;
+        setupStations();
+      }
+
+      // Setup stations based on config
+      function setupStations() {
+        stations = [];
+        const canvasWidth = 1920;
+        const spacing = canvasWidth / (config.numStations + 1);
+        for (let i = 1; i <= config.numStations; i++) {
+          stations.push({
+            x: spacing * i - 25,
+            y: 1030,
+            width: 50,
+            height: 50,
+            lastLaunch: 0,
+            launchInterval: 2000 + Math.random() * 2000,
+            health: 100,
+            destroyed: false,
+          });
+        }
+      }
+
+      // Input and click handling
+      canvas.addEventListener("click", (event) => {
+        const rect = canvas.getBoundingClientRect();
+        const clickX = event.clientX - rect.left;
+        const clickY = event.clientY - rect.top;
+        if (
+          (gameOver || gameWon) &&
+          clickX >= 860 &&
+          clickX <= 1060 &&
+          clickY >= 490 &&
+          clickY <= 590
+        ) {
+          document.getElementById("difficultyMenu").style.display = "block";
+          gameStarted = false;
+          gameOver = false;
+          gameWon = false;
+        }
+      });
+
+      // Function to drop a bomb
+      function dropBomb() {
+        const bomb = {
+          x: plane.x + plane.width / 2,
+          y: plane.y + plane.height,
+          radius: 5,
+          vx: 0,
+          vy: 5,
+          trail: [],
+        };
+        bombs.push(bomb);
+      }
+
+      // Function to update and draw smoke trails
+      function updateAndDrawTrail(trail, x, y) {
+        trail.push({ x, y, age: 0 });
+        ctx.fillStyle = "rgba(200, 200, 200, 0.5)";
+        trail.forEach((particle, index) => {
+          particle.age += 1;
+          if (particle.age > 30) {
+            trail.splice(index, 1);
+            return;
+          }
+          const alpha = 1 - particle.age / 30;
+          ctx.beginPath();
+          ctx.arc(
+            particle.x,
+            particle.y,
+            3 * (1 - particle.age / 30),
+            0,
+            Math.PI * 2
+          );
+          ctx.fillStyle = `rgba(200, 200, 200, ${alpha})`;
+          ctx.fill();
+        });
+      }
+
+      // Function to draw the plane
+      function drawPlane() {
+        const trailX = plane.x + plane.width / 4;
+        const trailY = plane.y + plane.height / 2;
+        updateAndDrawTrail(plane.trail, trailX, trailY);
+
+        ctx.fillStyle = "#4682B4";
+        ctx.beginPath();
+        ctx.moveTo(plane.x + plane.width, plane.y + plane.height / 2);
+        ctx.lineTo(plane.x + plane.width * 0.7, plane.y);
+        ctx.lineTo(plane.x + plane.width * 0.4, plane.y);
+        ctx.lineTo(plane.x + plane.width * 0.2, plane.y + plane.height * 0.3);
+        ctx.lineTo(plane.x, plane.y + plane.height * 0.3);
+        ctx.lineTo(plane.x + plane.width * 0.2, plane.y + plane.height * 0.7);
+        ctx.lineTo(plane.x + plane.width * 0.4, plane.y + plane.height);
+        ctx.lineTo(plane.x + plane.width * 0.7, plane.y + plane.height);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.fillStyle = "#333";
+        ctx.beginPath();
+        ctx.moveTo(plane.x + plane.width * 0.7, plane.y + plane.height * 0.3);
+        ctx.lineTo(plane.x + plane.width * 0.9, plane.y + plane.height / 2);
+        ctx.lineTo(plane.x + plane.width * 0.7, plane.y + plane.height * 0.7);
+        ctx.closePath();
+        ctx.fill();
+      }
+
+      // Function to draw missiles
+      function drawMissiles() {
+        missiles.forEach((missile) => {
+          if (missile.exploding) return;
+
+          if (missile.fuel > 0) {
+            const trailX =
+              missile.x +
+              missile.width / 2 -
+              (Math.cos(missile.angle) * missile.height) / 2;
+            const trailY =
+              missile.y +
+              missile.height / 2 -
+              (Math.sin(missile.angle) * missile.height) / 2;
+            updateAndDrawTrail(missile.trail, trailX, trailY);
+          }
+
+          ctx.save();
+          ctx.translate(
+            missile.x + missile.width / 2,
+            missile.y + missile.height / 2
+          );
+          ctx.rotate(missile.angle);
+
+          const length = missile.height;
+          const thickness = missile.width;
+
+          // Guidance head (yellow tip)
+          ctx.fillStyle = "#FFD700";
+          ctx.beginPath();
+          ctx.moveTo(length / 2, 0);
+          ctx.lineTo(length / 3, -thickness / 2);
+          ctx.lineTo(length / 3, thickness / 2);
+          ctx.closePath();
+          ctx.fill();
+
+          // Body (red)
+          ctx.fillStyle = "#B22222";
+          ctx.beginPath();
+          ctx.moveTo(length / 3, -thickness / 2);
+          ctx.lineTo(-length / 2 + 5, -thickness / 2);
+          ctx.lineTo(-length / 2, 0);
+          ctx.lineTo(-length / 2 + 5, thickness / 2);
+          ctx.lineTo(length / 3, thickness / 2);
+          ctx.closePath();
+          ctx.fill();
+
+          // Bottom fin (negative y)
+          ctx.fillStyle = "#555";
+          ctx.beginPath();
+          ctx.moveTo(-length / 2 + 5, -thickness / 2);
+          ctx.lineTo(-length / 2 + 5, -thickness / 2 - thickness);
+          ctx.lineTo(-length / 2, -thickness / 2);
+          ctx.closePath();
+          ctx.fill();
+
+          // Top fin (positive y)
+          ctx.beginPath();
+          ctx.moveTo(-length / 2 + 5, thickness / 2);
+          ctx.lineTo(-length / 2 + 5, thickness / 2 + thickness);
+          ctx.lineTo(-length / 2, thickness / 2);
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.restore();
+        });
+      }
+
+      // Function to draw bombs
+      function drawBombs() {
+        bombs.forEach((bomb) => {
+          updateAndDrawTrail(bomb.trail, bomb.x, bomb.y);
+          ctx.fillStyle = "#555";
+          ctx.beginPath();
+          ctx.arc(bomb.x, bomb.y, bomb.radius, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      // Function to draw air defense stations
+      function drawStations() {
+        stations.forEach((station) => {
+          if (!station.destroyed) {
+            ctx.fillStyle = "#2E8B57";
+            ctx.fillRect(station.x, station.y, station.width, station.height);
+            ctx.fillStyle = "#555";
+            ctx.fillRect(station.x + 10, station.y - 20, 30, 20);
+          }
+        });
+      }
+
+      // Function to draw explosions
+      function drawExplosions() {
+        explosions.forEach((expl) => {
+          ctx.fillStyle = `rgba(255, 165, 0, ${1 - expl.frame / 20})`;
+          ctx.beginPath();
+          ctx.arc(expl.x, expl.y, expl.radius, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
+
+      // Function to update plane position
+      function updatePlane() {
+        if (gameStarted && !gameOver && !gameWon) {
+          if (keys["ArrowUp"] && plane.y > 0) plane.y -= plane.speed;
+          if (keys["ArrowDown"] && plane.y < canvas.height - plane.height)
+            plane.y += plane.speed;
+          if (keys["ArrowLeft"] && plane.x > 0) plane.x -= plane.speed;
+          if (keys["ArrowRight"] && plane.x < canvas.width - plane.width)
+            plane.x += plane.speed;
+        }
+      }
+
+      // Function to spawn a missile from a station
+      function spawnMissile(station, timestamp) {
+        const targetX = plane.x + plane.width / 2;
+        const targetY = plane.y + plane.height / 2;
+        const initialAngle = -Math.PI / 2;
+        const missile = {
+          x: station.x + station.width / 2,
+          y: station.y - 20,
+          width: 10,
+          height: 30,
+          speed: 2,
+          maxSpeed: config.maxSpeed + score / 10000,
+          fuel: config.fuelBase + Math.random() * 50,
+          angle: initialAngle,
+          turnRate: config.turnRate,
+          trail: [],
+          exploding: false,
+          vx: Math.cos(initialAngle) * 2,
+          vy: Math.sin(initialAngle) * 2,
+          accel: 0.1,
+          postFuelTurnRate: config.turnRate * 0.5,
+          climbHeight: 0,
+        };
+        missiles.push(missile);
+        station.lastLaunch = timestamp;
+      }
+
+      // Function to update missiles
+      function updateMissiles() {
+        const speedThreshold = 0.5; // Speed below which missile explodes
+        missiles.forEach((missile, index) => {
+          if (missile.exploding) return;
+
+          const targetX = plane.x + plane.width / 2;
+          const targetY = plane.y + plane.height / 2;
+          const dx = targetX - (missile.x + missile.width / 2);
+          const dy = targetY - (missile.y + missile.height / 2);
+          const targetAngle = Math.atan2(dy, dx);
+
+          if (missile.fuel > 0) {
+            // Powered phase
+            missile.fuel -= 1;
+            missile.vx += Math.cos(missile.angle) * missile.accel;
+            missile.vy += Math.sin(missile.angle) * missile.accel;
+
+            const currentSpeed = Math.sqrt(
+              missile.vx * missile.vx + missile.vy * missile.vy
+            );
+            if (currentSpeed > missile.maxSpeed) {
+              const scale = missile.maxSpeed / currentSpeed;
+              missile.vx *= scale;
+              missile.vy *= scale;
+            }
+
+            missile.climbHeight += Math.abs(missile.vy);
+            if (missile.climbHeight < 200) {
+              missile.angle = -Math.PI / 2;
+            } else {
+              let angleDiff = targetAngle - missile.angle;
+              while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+              while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+              missile.angle += Math.max(
+                -missile.turnRate,
+                Math.min(missile.turnRate, angleDiff)
+              );
+              const speed = Math.sqrt(
+                missile.vx * missile.vx + missile.vy * missile.vy
+              );
+              missile.vx = Math.cos(missile.angle) * speed;
+              missile.vy = Math.sin(missile.angle) * speed;
+            }
+          } else {
+            // Inertial phase: pursue plane with drag, realign velocity, explode if speed too low
+            const currentSpeed = Math.sqrt(
+              missile.vx * missile.vx + missile.vy * missile.vy
+            );
+            if (currentSpeed > speedThreshold) {
+              missile.vx *= config.drag;
+              missile.vy *= config.drag;
+              let angleDiff = targetAngle - missile.angle;
+              while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+              while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+              missile.angle += Math.max(
+                -missile.postFuelTurnRate,
+                Math.min(missile.postFuelTurnRate, angleDiff)
+              );
+              // Realign velocity to angle
+              const reducedSpeed = currentSpeed * config.drag;
+              missile.vx = Math.cos(missile.angle) * reducedSpeed;
+              missile.vy = Math.sin(missile.angle) * reducedSpeed;
+            } else {
+              // Explode instead of free fall
+              missile.exploding = true;
+              explosions.push({
+                x: missile.x + missile.width / 2,
+                y: missile.y + missile.height / 2,
+                radius: 30,
+                frame: 0,
+              });
+              missiles.splice(index, 1);
+              return;
+            }
+          }
+
+          missile.x += missile.vx;
+          missile.y += missile.vy;
+
+          // Update angle based on velocity in inertial phase
+          if (
+            missile.fuel <= 0 &&
+            (Math.abs(missile.vx) > 0.001 || Math.abs(missile.vy) > 0.001)
+          ) {
+            missile.angle = Math.atan2(missile.vy, missile.vx);
+          }
+
+          if (missile.y >= canvas.height) {
+            missile.exploding = true;
+            explosions.push({
+              x: missile.x + missile.width / 2,
+              y: canvas.height,
+              radius: 30,
+              frame: 0,
+            });
+            missiles.splice(index, 1);
+            return;
+          }
+
+          if (
+            missile.y < -missile.height ||
+            missile.x < -missile.width ||
+            missile.x > canvas.width
+          ) {
+            missiles.splice(index, 1);
+          }
+        });
+      }
+
+      // Function to update bombs
+      function updateBombs() {
+        bombs.forEach((bomb, index) => {
+          bomb.x += bomb.vx;
+          bomb.y += bomb.vy;
+          if (bomb.y >= canvas.height) {
+            bombs.splice(index, 1);
+          }
+        });
+      }
+
+      // Function to check bomb collisions with stations
+      function checkBombCollisions() {
+        bombs.forEach((bomb, bombIndex) => {
+          stations.forEach((station) => {
+            if (station.destroyed) return;
+            if (
+              bomb.x >= station.x &&
+              bomb.x <= station.x + station.width &&
+              bomb.y >= station.y &&
+              bomb.y <= station.y + station.height
+            ) {
+              station.health -= 50;
+              bombs.splice(bombIndex, 1);
+              explosions.push({
+                x: bomb.x,
+                y: bomb.y,
+                radius: 20,
+                frame: 0,
+              });
+              if (station.health <= 0) {
+                station.destroyed = true;
+              }
+            }
+          });
+        });
+      }
+
+      // Update explosions
+      function updateExplosions() {
+        explosions.forEach((expl, index) => {
+          expl.frame += 1;
+          expl.radius += 1;
+          if (expl.frame > 20) explosions.splice(index, 1);
+        });
+      }
+
+      // Collision detection with missiles and explosions
+      function checkCollisions() {
+        if (invincibilityTime > 0) return;
+
+        missiles.forEach((missile, mIndex) => {
+          if (missile.exploding) return;
+          if (
+            missile.x < plane.x + plane.width &&
+            missile.x + missile.width > plane.x &&
+            missile.y < plane.y + plane.height &&
+            missile.y + missile.height > plane.y
+          ) {
+            explosions.push({
+              x: plane.x + plane.width / 2,
+              y: plane.y + plane.height / 2,
+              radius: 30,
+              frame: 0,
+            });
+            missiles.splice(mIndex, 1);
+            gameLives--;
+            invincibilityTime = 2000;
+            if (gameLives <= 0) gameOver = true;
+          }
+        });
+
+        explosions.forEach((expl) => {
+          const distX = Math.abs(expl.x - (plane.x + plane.width / 2));
+          const distY = Math.abs(expl.y - (plane.y + plane.height / 2));
+          if (distX > plane.width / 2 + expl.radius) return;
+          if (distY > plane.height / 2 + expl.radius) return;
+          if (distX <= plane.width / 2 || distY <= plane.height / 2) {
+            gameLives--;
+            invincibilityTime = 2000;
+            if (gameLives <= 0) gameOver = true;
+          } else {
+            const dx = distX - plane.width / 2;
+            const dy = distY - plane.height / 2;
+            if (dx * dx + dy * dy <= expl.radius * expl.radius) {
+              gameLives--;
+              invincibilityTime = 2000;
+              if (gameLives <= 0) gameOver = true;
+            }
+          }
+        });
+      }
+
+      // Draw score and lives
+      function drawScore() {
+        ctx.fillStyle = "white";
+        ctx.font = "20px Arial";
+        ctx.fillText(`Score: ${Math.floor(score)}`, 10, 30);
+        ctx.fillText(`Lives: ${gameLives}`, canvas.width - 150, 30);
+      }
+
+      // Draw restart button
+      function drawRestartButton() {
+        if (gameOver || gameWon) {
+          ctx.save();
+          ctx.beginPath();
+          ctx.moveTo(860, 490);
+          ctx.lineTo(1060, 490);
+          ctx.arcTo(1060, 540, 1010, 590, 25);
+          ctx.arcTo(860, 590, 860, 540, 25);
+          ctx.closePath();
+          const grd = ctx.createLinearGradient(860, 490, 1060, 590);
+          grd.addColorStop(0, "#4CAF50");
+          grd.addColorStop(1, "#45a049");
+          ctx.fillStyle = grd;
+          ctx.fill();
+          ctx.strokeStyle = "white";
+          ctx.lineWidth = 2;
+          ctx.stroke();
+          ctx.fillStyle = "white";
+          ctx.font = "20px Arial";
+          ctx.fillText("Restart", 910, 550);
+          ctx.restore();
+        }
+      }
+
+      // Game over screen
+      function drawGameOver() {
+        ctx.fillStyle = "white";
+        ctx.font = "40px Arial";
+        ctx.fillText("Game Over", canvas.width / 2 - 240, canvas.height / 2);
+        ctx.font = "20px Arial";
+        ctx.fillText(
+          `Final Score: ${Math.floor(score)}`,
+          canvas.width / 2 - 80,
+          canvas.height / 2 + 40
+        );
+        drawRestartButton();
+      }
+
+      // Game won screen
+      function drawGameWon() {
+        ctx.fillStyle = "white";
+        ctx.font = "40px Arial";
+        ctx.fillText("You Win!", canvas.width / 2 - 80, canvas.height / 2);
+        ctx.font = "20px Arial";
+        ctx.fillText(
+          `Final Score: ${Math.floor(score)}`,
+          canvas.width / 2 - 80,
+          canvas.height / 2 + 40
+        );
+        drawRestartButton();
+      }
+
+      // Main game loop
+      function gameLoop(timestamp) {
+        if (!lastTimestamp) lastTimestamp = timestamp;
+        const delta = timestamp - lastTimestamp;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (gameStarted && !gameOver && !gameWon) {
+          updatePlane();
+          updateMissiles();
+          updateBombs();
+          updateExplosions();
+          checkCollisions();
+          checkBombCollisions();
+
+          stations.forEach((station) => {
+            if (
+              !station.destroyed &&
+              timestamp - station.lastLaunch > station.launchInterval
+            ) {
+              spawnMissile(station, timestamp);
+              station.launchInterval = 2000 + Math.random() * 2000;
+            }
+          });
+
+          score += delta / 1000 / 60;
+
+          if (invincibilityTime > 0) invincibilityTime -= delta;
+
+          if (stations.every((station) => station.destroyed)) {
+            gameWon = true;
+          }
+
+          drawPlane();
+          drawMissiles();
+          drawBombs();
+          drawExplosions();
+          drawStations();
+          drawScore();
+        } else if (gameOver) {
+          drawGameOver();
+        } else if (gameWon) {
+          drawGameWon();
+        }
+
+        lastTimestamp = timestamp;
+        requestAnimationFrame(gameLoop);
+      }
+
+      // Start the game loop
+      requestAnimationFrame(gameLoop);
+    </script>
+  </body>
+</html>
