@@ -1,50 +1,43 @@
 <script type="text/javascript">
-  var gk_isXlsx = false;
-  var gk_xlsxFileLookup = {};
-  var gk_fileData = {};
-  function filledCell(cell) {
-    return cell !== "" && cell != null;
-  }
-  function loadFileData(filename) {
-    if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
-      try {
-        var workbook = XLSX.read(gk_fileData[filename], { type: "base64" });
-        var firstSheetName = workbook.SheetNames[0];
-        var worksheet = workbook.Sheets[firstSheetName];
-
-        // Convert sheet to JSON to filter blank rows
-        var jsonData = XLSX.utils.sheet_to_json(worksheet, {
-          header: 1,
-          blankrows: false,
-          defval: "",
-        });
-        // Filter out blank rows (rows where all cells are empty, null, or undefined)
-        var filteredData = jsonData.filter((row) => row.some(filledCell));
-
-        // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
-        var headerRowIndex = filteredData.findIndex(
-          (row, index) =>
-            row.filter(filledCell).length >=
-            filteredData[index + 1]?.filter(filledCell).length
-        );
-        // Fallback
-        if (headerRowIndex === -1 || headerRowIndex > 25) {
-          headerRowIndex = 0;
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
         }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
 
-        // Convert filtered JSON back to CSV
-        var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
-        csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
-        return csv;
-      } catch (e) {
-        console.error(e);
-        return "";
-      }
-    }
-    return gk_fileData[filename] || "";
-  }
-</script>
-<!DOCTYPE html>
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -74,7 +67,7 @@
         top: 10px;
         right: 10px;
         padding: 10px 20px;
-        background: linear-gradient(#4caf50, #45a049);
+        background: linear-gradient(#4CAF50, #45a049);
         color: white;
         border: 2px solid white;
         border-radius: 10px;
@@ -83,7 +76,7 @@
         z-index: 10;
       }
       #fullscreenButton:hover {
-        background: linear-gradient(#45a049, #4caf50);
+        background: linear-gradient(#45a049, #4CAF50);
       }
       #followCursorContainer {
         position: absolute;
@@ -118,7 +111,7 @@
         display: block;
         margin: 10px auto;
         padding: 10px 20px;
-        background: #4caf50;
+        background: #4CAF50;
         color: white;
         border: none;
         cursor: pointer;
@@ -141,10 +134,8 @@
     <canvas id="gameCanvas" width="1920" height="1080"></canvas>
     <button id="fullscreenButton">Full Screen</button>
     <div id="followCursorContainer">
-      <input type="checkbox" id="followCursor" />
-      <label id="followCursorLabel" for="followCursor"
-        >Следовать за курсором</label
-      >
+      <input type="checkbox" id="followCursor">
+      <label id="followCursorLabel" for="followCursor">Следовать за курсором</label>
     </div>
     <div id="difficultyMenu">
       <h2>Выберите сложность</h2>
@@ -153,28 +144,12 @@
       <button onclick="startGame('hard')">Сложно</button>
       <button onclick="showCustomForm()">Настроить</button>
       <div id="customForm">
-        <label
-          >Макс. скорость ракет:
-          <input id="maxSpeed" type="number" step="0.1" value="4" /></label
-        ><br />
-        <label
-          >Маневренность ракет (turnRate):
-          <input id="turnRate" type="number" step="0.01" value="0.02" /></label
-        ><br />
-        <label
-          >Топливо ракет (диапазон):
-          <input id="fuelBase" type="number" value="150" /></label
-        ><br />
-        <label
-          >Аэродинамика ракет (drag, меньше = короче полет):
-          <input id="drag" type="number" step="0.001" value="0.99" /></label
-        ><br />
-        <label>Жизни игрока: <input id="lives" type="number" value="3" /></label
-        ><br />
-        <label
-          >Количество станций:
-          <input id="numStations" type="number" value="3" /></label
-        ><br />
+        <label>Макс. скорость ракет: <input id="maxSpeed" type="number" step="0.1" value="4"></label><br>
+        <label>Маневренность ракет (turnRate): <input id="turnRate" type="number" step="0.01" value="0.02"></label><br>
+        <label>Топливо ракет (диапазон): <input id="fuelBase" type="number" value="150"></label><br>
+        <label>Аэродинамика ракет (drag, меньше = короче полет): <input id="drag" type="number" step="0.001" value="0.99"></label><br>
+        <label>Жизни игрока: <input id="lives" type="number" value="3"></label><br>
+        <label>Количество станций: <input id="numStations" type="number" value="3"></label><br>
         <button onclick="startCustomGame()">Начать игру</button>
       </div>
     </div>
@@ -189,7 +164,7 @@
         fuelBase: 150,
         drag: 0.99,
         lives: 3,
-        numStations: 3,
+        numStations: 3
       };
 
       // Game variables
@@ -199,7 +174,7 @@
         width: 60,
         height: 20,
         speed: 5,
-        trail: [],
+        trail: []
       };
       let keys = {};
       let missiles = [];
@@ -223,13 +198,7 @@
       // Input handling
       window.addEventListener("keydown", (e) => {
         keys[e.key] = true;
-        if (
-          e.key === " " &&
-          gameStarted &&
-          !gameOver &&
-          !gameWon &&
-          performance.now() - lastBombDrop > bombCooldown
-        ) {
+        if (e.key === " " && gameStarted && !gameOver && !gameWon && performance.now() - lastBombDrop > bombCooldown) {
           dropBomb();
           lastBombDrop = performance.now();
         }
@@ -267,12 +236,7 @@
         const touchY = (touch.clientY - rect.top) * scaleY;
 
         // Drop bomb on any tap
-        if (
-          gameStarted &&
-          !gameOver &&
-          !gameWon &&
-          performance.now() - lastBombDrop > bombCooldown
-        ) {
+        if (gameStarted && !gameOver && !gameWon && performance.now() - lastBombDrop > bombCooldown) {
           dropBomb();
           lastBombDrop = performance.now();
         }
@@ -326,40 +290,38 @@
         config.fuelBase = parseInt(document.getElementById("fuelBase").value);
         config.drag = parseFloat(document.getElementById("drag").value);
         config.lives = parseInt(document.getElementById("lives").value);
-        config.numStations = parseInt(
-          document.getElementById("numStations").value
-        );
+        config.numStations = parseInt(document.getElementById("numStations").value);
         startGameWithConfig();
       }
 
       // Start game with preset
       function startGame(difficulty) {
-        if (difficulty === "easy") {
+        if (difficulty === 'easy') {
           config = {
             maxSpeed: 3,
             turnRate: 0.01,
             fuelBase: 100,
             drag: 0.98,
             lives: 5,
-            numStations: 2,
+            numStations: 2
           };
-        } else if (difficulty === "medium") {
+        } else if (difficulty === 'medium') {
           config = {
             maxSpeed: 4,
             turnRate: 0.02,
             fuelBase: 150,
             drag: 0.99,
             lives: 3,
-            numStations: 3,
+            numStations: 3
           };
-        } else if (difficulty === "hard") {
+        } else if (difficulty === 'hard') {
           config = {
             maxSpeed: 5,
             turnRate: 0.03,
             fuelBase: 200,
             drag: 0.995,
             lives: 1,
-            numStations: 4,
+            numStations: 4
           };
         }
         startGameWithConfig();
@@ -412,10 +374,8 @@
       // Input and click handling
       canvas.addEventListener("click", (event) => {
         const rect = canvas.getBoundingClientRect();
-        const clickX =
-          (event.clientX - rect.left) * (canvas.width / rect.width);
-        const clickY =
-          (event.clientY - rect.top) * (canvas.height / rect.height);
+        const clickX = (event.clientX - rect.left) * (canvas.width / rect.width);
+        const clickY = (event.clientY - rect.top) * (canvas.height / rect.height);
         if (
           (gameOver || gameWon) &&
           clickX >= 860 &&
@@ -502,14 +462,8 @@
           if (missile.exploding) return;
 
           if (missile.fuel > 0) {
-            const trailX =
-              missile.x +
-              missile.width / 2 -
-              (Math.cos(missile.angle) * missile.height) / 2;
-            const trailY =
-              missile.y +
-              missile.height / 2 -
-              (Math.sin(missile.angle) * missile.height) / 2;
+            const trailX = missile.x + missile.width / 2 - Math.cos(missile.angle) * missile.height / 2;
+            const trailY = missile.y + missile.height / 2 - Math.sin(missile.angle) * missile.height / 2;
             updateAndDrawTrail(missile.trail, trailX, trailY);
           }
 
@@ -603,8 +557,7 @@
             const distX = targetX - plane.x;
             const distY = targetY - plane.y;
             const distance = Math.sqrt(distX * distX + distY * distY);
-            if (distance > 5) {
-              // Stop if within 5 pixels
+            if (distance > 5) { // Stop if within 5 pixels
               const speed = plane.speed;
               const scale = speed / distance;
               dx = distX * scale;
@@ -627,11 +580,9 @@
 
           // Keep plane in bounds
           if (plane.y < 0) plane.y = 0;
-          if (plane.y > canvas.height - plane.height)
-            plane.y = canvas.height - plane.height;
+          if (plane.y > canvas.height - plane.height) plane.y = canvas.height - plane.height;
           if (plane.x < 0) plane.x = 0;
-          if (plane.x > canvas.width - plane.width)
-            plane.x = canvas.width - plane.width;
+          if (plane.x > canvas.width - plane.width) plane.x = canvas.width - plane.width;
         }
       }
 
@@ -656,7 +607,7 @@
           vy: Math.sin(initialAngle) * 2,
           accel: 0.1,
           postFuelTurnRate: config.turnRate * 0.5,
-          climbHeight: 0,
+          climbHeight: 0
         };
         missiles.push(missile);
         station.lastLaunch = timestamp;
@@ -736,10 +687,7 @@
           missile.x += missile.vx;
           missile.y += missile.vy;
 
-          if (
-            missile.fuel <= 0 &&
-            (Math.abs(missile.vx) > 0.001 || Math.abs(missile.vy) > 0.001)
-          ) {
+          if (missile.fuel <= 0 && (Math.abs(missile.vx) > 0.001 || Math.abs(missile.vy) > 0.001)) {
             missile.angle = Math.atan2(missile.vy, missile.vx);
           }
 
@@ -943,10 +891,7 @@
           checkBombCollisions();
 
           stations.forEach((station) => {
-            if (
-              !station.destroyed &&
-              timestamp - station.lastLaunch > station.launchInterval
-            ) {
+            if (!station.destroyed && timestamp - station.lastLaunch > station.launchInterval) {
               spawnMissile(station, timestamp);
               station.launchInterval = 2000 + Math.random() * 2000;
             }
@@ -956,7 +901,7 @@
 
           if (invincibilityTime > 0) invincibilityTime -= delta;
 
-          if (stations.every((station) => station.destroyed)) {
+          if (stations.every(station => station.destroyed)) {
             gameWon = true;
           }
 
