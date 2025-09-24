@@ -440,9 +440,9 @@
             break;
           case "panzer":
             config = {
-              maxSpeed: 12,
+              maxSpeed: 25,
               turnRate: 0.03,
-              fuelBase: 95,
+              fuelBase: 105,
               drag: 0.99,
               lives: 1,
               numStations: 1,
@@ -694,11 +694,19 @@
               targetY = null;
             }
           } else {
-            if (keys["ArrowUp"] && plane.y > 0) dy -= plane.speed;
-            if (keys["ArrowDown"] && plane.y < canvas.height - plane.height)
+            if ((keys["w"] || keys["W"] || keys["ArrowUp"]) && plane.y > 0)
+              dy -= plane.speed;
+            if (
+              (keys["s"] || keys["S"] || keys["ArrowDown"]) &&
+              plane.y < canvas.height - plane.height
+            )
               dy += plane.speed;
-            if (keys["ArrowLeft"] && plane.x > 0) dx -= plane.speed;
-            if (keys["ArrowRight"] && plane.x < canvas.width - plane.width)
+            if ((keys["a"] || keys["A"] || keys["ArrowLeft"]) && plane.x > 0)
+              dx -= plane.speed;
+            if (
+              (keys["d"] || keys["D"] || keys["ArrowRight"]) &&
+              plane.x < canvas.width - plane.width
+            )
               dx += plane.speed;
           }
 
